@@ -1,9 +1,10 @@
 import cv2
 from dependency import Frame
 
+
 async def capture_frame_process_1(ip: str, url: str) -> None:
     frame: Frame = Frame(ip=ip)
-    
+
     while 1:
         cap: cv2.VideoCapture = cv2.VideoCapture(url)
         while 1:
@@ -11,24 +12,21 @@ async def capture_frame_process_1(ip: str, url: str) -> None:
             if not ret:
                 frame.set_last_frame(frame=None)
                 continue
-            
+
             frame.set_last_frame(frame=frame)
 
-        print(f'{ret=}, {type(ret)=}')
-        print(type(frame))
-    
+
 async def saving_frame_process_2(ip: str) -> None:
     frame: Frame = Frame(ip=ip)
-    await frame.save_image(ip=ip)
+    # await frame.save_image(ip=ip)
 
-    
 
 # frame_save_queue = queue.Queue()
 # async def frame_capture_loop(rtsp_url: str) -> None:
 #     async with Camera(url=rtsp_url) as cam:
 #         ...
-    
-    
+
+
 #     while 1:  # Outer loop to handle reconnection
 #         try:
 #             cap = cv2.VideoCapture(rtsp_url)
