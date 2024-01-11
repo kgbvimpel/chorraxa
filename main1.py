@@ -4,13 +4,14 @@ import asyncio
 import cv2
 import numpy as np
 import multiprocessing
-from multiprocessing.connection import PipeConnection
 import concurrent.futures
 from turbojpeg import TurboJPEG
 
 from models import Frame
 from utils import CameraIP, camera_ips
 from time import sleep
+
+from aiomultiprocess import Pool
 
 
 def save_each_frame_process_P2(cameraIP: CameraIP, frame: Frame) -> None:
@@ -21,23 +22,24 @@ def save_each_frame_process_P2(cameraIP: CameraIP, frame: Frame) -> None:
     _queue, _frame = info.get('queue'), info.get('frame')
     image_path = OsPath.join(cameraIP.folder, '{}.jpg'.format(_queue))
 
-    engine = TurboJPEG()
-    with open(image_path, "wb") as file:
-        file.write(engine.encode(_frame, quality=95))
-        file.close()
+    # engine = TurboJPEG()
+    # with open(image_path, "wb") as file:
+    #     file.write(engine.encode(_frame, quality=95))
+    #     file.close()
+
+    cv2.imwrite(image_path, _frame)
 
 
 async def async_capture_frames_from_camera_P1(cameraIP: CameraIP, frame: Frame) -> None:
-    cap = cv2.VideoCapture()
+    cap = cv2.VideoCapture(cameraIP.url)
     if not cap.isOpened():
-        print('Fock...')
         return
 
     def read_frame():
         nonlocal cap
 
         _ret, _frame = cap.read()
-        if not _ret:
+        if _ret:
             frame.set_last_frame(ip=cameraIP.ip, frame=_frame)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -45,30 +47,21 @@ async def async_capture_frames_from_camera_P1(cameraIP: CameraIP, frame: Frame) 
 
         while True:
             await loop.run_in_executor(executor, read_frame)
-            await loop.run_in_executor(executor, save_each_frame_process_P2, args=(cameraIP, frame, ))
+            await loop.run_in_executor(executor, save_each_frame_process_P2, *(cameraIP, frame, ))
             await asyncio.sleep(0)
 
 
-async def analyze_active_frame_proccess_P3(cameraIP: CameraIP, frame: Frame, parent_conn: PipeConnection):
-    condition_met_frames = multiprocessing.Manager().list()
+# async def analyze_active_frame_proccess_P3(cameraIPs: list[CameraIP], frame: Frame):
+#     print(cameraIPs)
+#     await asyncio.sleep(1)
+#     print(frame)
 
-    while True:
-        if not frames_queue.empty():
-            frame = frames_queue.get()
+async def analyze_active_frame_proccess_P3(data):
+    print(data)
+    await asyncio.sleep(1)
+    print(data)
 
-            # Your condition checking logic goes here
-            # For example, checking if a certain color is present
-            if np.any(frame == [0, 255, 0]):
-                condition_met_frames.append(frame)
-
-        await asyncio.sleep(0)  # Allow other tasks to run
-
-        # Your logic to create a video from condition_met_frames goes here
-        if len(condition_met_frames) > 0:
-            video_process.send(condition_met_frames.copy())
-            condition_met_frames.clear()
-
-# Function to create a video from frames in a separate process
+    # Function to create a video from frames in a separate process
 
 
 def create_video_from_detected_frame_P4(task_queue):
@@ -83,59 +76,34 @@ def create_video_from_detected_frame_P4(task_queue):
 async def main(cameraIPs: tuple[CameraIP]) -> None:
     frame = Frame()
 
-    # # Start the camera reading tasks
-    # frame_reading_tasks = [
-    #     asyncio.create_task(
-    #         async_capture_frames_from_camera_P1(
-    #             cameraIP=cameraIP, frame=frame))
-    #     for cameraIP in cameraIPs
-    # ]
+    # Start the camera reading tasks
+    frame_reading_tasks = [
+        asyncio.create_task(
+            async_capture_frames_from_camera_P1(
+                cameraIP=cameraIP, frame=frame))
+        for cameraIP in cameraIPs
+    ]
 
-    task_queue = multiprocessing.Queue()
-    additional_task_process = multiprocessing.Process(
-        target=create_video_from_detected_frame_P4, args=(task_queue,))
-    additional_task_process.start()
+    # CPU-bound tasks
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        loop = asyncio.get_running_loop()
+        
+        # Prepare data for CPU-bound tasks
+        tasks_data = [i for i in range(10)]
 
-    cpu_count = multiprocessing.cpu_count()
-    with multiprocessing.Pool(processes=cpu_count) as pool:
-        for cameraIP in cameraIPs:
-            pool.starmap(
-                analyze_active_frame_proccess_P3,
-                [(cameraIP.ip, frame, task_queue),]
-            )
+        # Schedule CPU-bound tasks and obtain futures
+        futures = [loop.run_in_executor(executor, analyze_active_frame_proccess_P3, data) for data in tasks_data]
 
-    # frames_queue = multiprocessing.Queue()
-    # # Create a multiprocessing pipe for communication between processes
-    # parent_conn: PipeConnection
-    # child_conn: PipeConnection = multiprocessing.Pipe()
+        # Await the completion of futures
+        cpu_results = await asyncio.gather(*futures)
+    
+    # Run camera reading tasks concurrently
+    await asyncio.gather(*frame_reading_tasks)  # => Done!
 
-    # # # Start the video creation process
-    # video_process = multiprocessing.Process(
-    #     target=create_video_from_detected_frame_P4, args=(child_conn,))
-    # video_process.start()
 
-    # # Start the frame analysis task
-    # analyze_tasks = [
-    #     analyze_active_frame_proccess_P3(
-    #         cameraIP=cameraIP,
-    #         frame=frame,
-    #         parent_conn=parent_conn
-    #     ) for cameraIP in cameraIPs
-    # ]
-
-    # # Stop the frame analysis task
-    # analyze_frame_task.cancel()
-
-    # Wait for the frame analysis task to finish
-    # asyncio.run(analyze_frame_task)
-
-    # # Run camera reading tasks concurrently
-    # await asyncio.gather(*frame_reading_tasks)  # => Done!
-
-    # Terminate the video creation process
-    # video_process.terminate()
-    # video_process.join()
 
 
 if __name__ == "__main__":
     asyncio.run(main(cameraIPs=camera_ips()))
+
+    # print(list(zip([1, 2, 3,], [4, 5, 6])))
