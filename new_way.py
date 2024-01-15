@@ -41,7 +41,7 @@ def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
         counter += 1
 
         # Store the active frame in the shared dictionary
-        active_frames[cameraID] = {
+        active_frames[cameraID.ip] = {
             "count": counter,
             "data": frame
         }
