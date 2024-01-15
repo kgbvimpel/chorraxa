@@ -36,6 +36,7 @@ def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
 
         # Save frames as images
         image_filename = OsPath.join(cameraID.folder, f'{counter}.jpg')
+        print(image_filename)
         cv2.imwrite(image_filename, frame)
         counter += 1
 
