@@ -35,7 +35,7 @@ def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
             break
 
         # Save frames as images
-        image_filename = OsPath.join(cameraID.folder, '{counter}.jpg')
+        image_filename = OsPath.join(cameraID.folder, f'{counter}.jpg')
         cv2.imwrite(image_filename, frame)
         counter += 1
 
@@ -78,8 +78,9 @@ def main():
 
         while True:
             print('Fock........')
-            # for cameraIP, active_frame in active_frames.items():
-            #     pool.submit(analyze_active_frame, cameraIP, active_frame)
+            for cameraIP, active_frame in active_frames.items():
+                print(cameraIP, active_frame.keys())
+                # pool.submit(analyze_active_frame, cameraIP, active_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
