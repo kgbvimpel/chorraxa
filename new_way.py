@@ -6,17 +6,21 @@ from collections import deque
 from queue import Queue
 from models import CameraIP
 import cv2
+import numpy as np
 from os import path as OsPath
+from turbojpeg import TurboJPEG
 
 from utils import camera_ips
 
 threadLocker = threadLock()
 
 
-def saving_each_frame(frame):
-    for _ in range(2):  # For demonstration purposes, save frames for 5 iterations
-        print(f'Saving each frame: {frame}...')
-        sleep(1)
+def saving_each_frame(image_path: str, data: np.ndarray) -> bool:
+    engine = TurboJPEG()
+    with open(image_path, "wb") as file:
+        file.write(engine.encode(data, quality=95))
+        file.close()
+    return True
 
 
 def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
@@ -34,10 +38,10 @@ def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
             print(f"Error: Could not read frame from camera {cameraID}.")
             break
 
-        # Save frames as images
-        image_filename = OsPath.join(cameraID.folder, f'{counter}.jpg')
-        print(image_filename)
-        cv2.imwrite(image_filename, frame)
+        saving_each_frame(
+            image_path=OsPath.join(cameraID.folder, f'{counter}.jpg'),
+            data=frame
+        )
         counter += 1
 
         # Store the active frame in the shared dictionary
