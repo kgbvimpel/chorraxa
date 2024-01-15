@@ -71,20 +71,20 @@ def main():
     with multiprocessing.Manager() as manager:
         active_frames = manager.dict()
 
-        with ProcessPoolExecutor() as pool:
+        with ProcessPoolExecutor(max_workers=4) as pool:
             futures = [
                 pool.submit(connect_to_camera, cameraIP, active_frames)
                 for cameraIP in cameraIPs
             ]
 
-        while True:
-            print('Fock........')
-            for cameraIP, active_frame in active_frames.items():
-                print(cameraIP, active_frame.keys())
-                # pool.submit(analyze_active_frame, cameraIP, active_frame)
+        # while True:
+        #     print('Fock........')
+        #     for cameraIP, active_frame in active_frames.items():
+        #         print(cameraIP, active_frame.keys())
+        #         # pool.submit(analyze_active_frame, cameraIP, active_frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+        #     if cv2.waitKey(1) & 0xFF == ord('q'):
+        #         break
 
         for future in futures:
             print(future.result())
