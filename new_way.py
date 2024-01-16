@@ -1,56 +1,66 @@
+from os import path as OsPath
 from time import sleep
 import multiprocessing
-from threading import Thread, Lock as threadLock
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from collections import deque
-from queue import Queue
+from multiprocessing import Lock
+from concurrent.futures import ProcessPoolExecutor
 from models import CameraIP
-import cv2
 import numpy as np
-from os import path as OsPath
+import cv2
 from turbojpeg import TurboJPEG
 
 from utils import camera_ips
 
-threadLocker = threadLock()
+locker = Lock()
 
 
-def saving_each_frame(image_path: str, data: np.ndarray) -> bool:
+def saving_each_frame_with_turbojpeg(image_path: str, data: np.ndarray) -> bool:
     engine = TurboJPEG()
-    with open(image_path, "wb") as file:
-        file.write(engine.encode(data, quality=95))
-        file.close()
-    return True
+
+    with locker:
+        with open(image_path, "wb") as file:
+            file.write(engine.encode(data, quality=95))
+            file.close()
+        return True
 
 
-def connect_to_camera(cameraID: CameraIP, active_frames: dict) -> None:
-    print('Camera... {}'.format(cameraID.ip))
-    cap = cv2.VideoCapture(cameraID.url)
+def saving_each_frame_with_cv2imwrite(image_path: str, data: np.ndarray) -> bool:
+    with locker:
+        result = cv2.imwrite(filename=image_path, img=data)
+        return result
+
+
+def connect_to_camera(cameraIP: CameraIP, active_frames: dict) -> None:
+    print('Camera... {}'.format(cameraIP.ip))
+    cap = cv2.VideoCapture(cameraIP.url)
     if not cap.isOpened():
-        print(f"Error: Could not open camera {cameraID}.")
+        print(f"Error: Could not open camera {cameraIP}.")
         return
+    print('Camera connected succesfully... {}'.format(cameraIP.ip))
 
     counter = 0
     while True:
-        ret, frame = cap.read()
+        while locker:
+            ret, frame = cap.read()
 
-        if not ret:
-            print(f"Error: Could not read frame from camera {cameraID}.")
-            break
+            if not ret:
+                print(f"Error: Could not read frame from camera {cameraIP}.")
+                break
 
-        saving_each_frame(
-            image_path=OsPath.join(cameraID.folder, f'{counter}.jpg'),
-            data=frame
-        )
-        counter += 1
+            image_path = OsPath.join(cameraIP.folder, f'{counter}.jpg')
+            print(image_path)
+            saving_each_frame_with_cv2imwrite(
+                image_path=image_path,
+                data=frame
+            )
+            counter += 1
 
-        # Store the active frame in the shared dictionary
-        active_frames[cameraID.ip] = {
-            "count": counter,
-            "data": frame
-        }
+            # Store the active frame in the shared dictionary
+            active_frames[cameraIP.ip] = {
+                "count": counter,
+                "data": frame
+            }
 
-    cap.release()
+        cap.release()
 
 
 def analyze_active_frame(frames):
@@ -70,25 +80,31 @@ def create_videos(frames):
 
 
 def main():
-    cameraIPs = camera_ips()
+    cameraIPs: list[CameraIP] = camera_ips()
 
     with multiprocessing.Manager() as manager:
         active_frames = manager.dict()
 
-        with ProcessPoolExecutor(max_workers=4) as pool:
+        with ProcessPoolExecutor(max_workers=6) as pool:
             futures = [
                 pool.submit(connect_to_camera, cameraIP, active_frames)
                 for cameraIP in cameraIPs
             ]
+            print()
 
-        # while True:
-        #     print('Fock........')
-        #     for cameraIP, active_frame in active_frames.items():
-        #         print(cameraIP, active_frame.keys())
-        #         # pool.submit(analyze_active_frame, cameraIP, active_frame)
-
-        #     if cv2.waitKey(1) & 0xFF == ord('q'):
-        #         break
+            while True:
+                info = [
+                    (
+                        cameraIP,
+                        active_frames[cameraIP]['count'],
+                        # active_frames[cameraIP]['data']
+                    ) for cameraIP in active_frames.keys()
+                ]
+                if info:
+                    print(info)
+                    # pool.submit(analyze_active_frame, cameraIP, active_frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
         for future in futures:
             print(future.result())
