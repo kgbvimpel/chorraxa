@@ -1,7 +1,8 @@
 from os import path as OsPath
 from time import sleep
 import multiprocessing
-from multiprocessing import Lock
+from threading import Thread
+from multiprocessing import Lock, Manager, Queue
 from concurrent.futures import ProcessPoolExecutor
 from models import CameraIP
 import numpy as np
@@ -38,7 +39,7 @@ def connect_to_camera(cameraIP: CameraIP, active_frames: dict) -> None:
     print('Camera connected succesfully... {}'.format(cameraIP.ip))
 
     counter = 0
-    while True:
+    while 1:
         while locker:
             ret, frame = cap.read()
 
@@ -63,48 +64,56 @@ def connect_to_camera(cameraIP: CameraIP, active_frames: dict) -> None:
         cap.release()
 
 
-def analyze_active_frame(frames):
-    print('world')
-    for _ in range(2):
-        print('Analyze active frame...')
-        sleep(2)
-
-    print('Fokaasdasd.')
+def analyze_active_frame(frames: list[tuple], video_queues: Queue) -> None:
+    print(frames)
     return frames
 
 
-def create_videos(frames):
-    for _ in range(2):  # For demonstration purposes, create videos for 5 iterations
-        print('Create a video...')
-        sleep(1)
+def create_an_video(tasks: Queue) -> None:
+    pass
 
 
 def main():
     cameraIPs: list[CameraIP] = camera_ips()
 
-    with multiprocessing.Manager() as manager:
+    with Manager() as manager:
         active_frames = manager.dict()
+        video_queues = manager.Queue()
 
-        with ProcessPoolExecutor(max_workers=6) as pool:
+        with ProcessPoolExecutor(max_workers=2) as pool_connection_to_camera:
             futures = [
-                pool.submit(connect_to_camera, cameraIP, active_frames)
+                pool_connection_to_camera.submit(
+                    connect_to_camera,
+                    cameraIP,
+                    active_frames)
                 for cameraIP in cameraIPs
             ]
-            print()
 
-            while True:
-                info = [
-                    (
-                        cameraIP,
-                        active_frames[cameraIP]['count'],
-                        # active_frames[cameraIP]['data']
-                    ) for cameraIP in active_frames.keys()
-                ]
-                if info:
-                    print(info)
-                    # pool.submit(analyze_active_frame, cameraIP, active_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+            with ProcessPoolExecutor(max_workers=6) as pool_analyze_frames:
+                while 1:
+                    info = [
+                        (
+                            cameraIP,
+                            active_frames[cameraIP]['count'],
+                            # active_frames[cameraIP]['data']
+                        ) for cameraIP in active_frames.keys()
+                    ]
+                    if info:
+                        print(info)
+                        pool_analyze_frames.submit(
+                            analyze_active_frame,
+                            info,
+                            video_queues
+                        )
+
+                    if not video_queues.empty():
+                        pool_analyze_frames.submit(
+                            create_an_video,
+                            video_queues
+                        )
+
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
 
         for future in futures:
             print(future.result())
